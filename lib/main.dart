@@ -1,115 +1,269 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 
-//jkjkjkjkjkjkjkjkjkjkj
-const ExpenseForm = () => {
+const FirebaseContext = createContext(null);
+
+const FirebaseProvider = ({ children }) => {
+  const [app, setApp] = useState(null);
+  const [db, setDb] = useState(null);
+  const [auth, setAuth] = useState(null);
+  const [userId, setUserId] = useState(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+
+  useEffect(() => {
+    try {
+      const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+      const initializedApp = initializeApp(firebaseConfig);
+      setApp(initializedApp);
+
+      const firestoreDb = getFirestore(initializedApp);
+      setDb(firestoreDb);
+      const firebaseAuth = getAuth(initializedApp);
+      setAuth(firebaseAuth);
+
+      const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+      if (initialAuthToken) {
+        signInWithCustomToken(firebaseAuth, initialAuthToken)
+          .catch(error => {
+            console.error("Error signing in with custom token:", error);
+            signInAnonymously(firebaseAuth).catch(err => console.error("Error signing in anonymously:", err));
+          });
+      } else {
+        signInAnonymously(firebaseAuth)
+          .catch(error => console.error("Error signing in anonymously:", error));
+      }
+
+      const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
+        if (user) {
+          setUserId(user.uid);
+        } else {
+          setUserId(null);
+        }
+        setIsAuthReady(true);
+      });
+
+      return () => unsubscribe();
+    } catch (error) {
+      console.error("Failed to initialize Firebase:", error);
+      setIsAuthReady(true);
+    }
+  }, []);
+
+  return (
+    <FirebaseContext.Provider value={{ app, db, auth, userId, isAuthReady }}>
+      {children}
+    </FirebaseContext.Provider>
+  );
+};
+
+const useFirebase = () => useContext(FirebaseContext);
+
+const ExpenseForm = ({ onAddExpense }) => {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    console.log('Form submitted');
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      console.log('Please enter a valid positive amount.');
+      return;
+    }
+    if (!description.trim()) {
+      console.log('Please enter a description.');
+      return;
+    }
+    onAddExpense(parsedAmount, description.trim());
+    setAmount('');
+    setDescription('');
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ border: '3px dashed red', padding: '10px', marginBottom: '20px', backgroundColor: '#FFFFCC' }}>
-      <h2 style={{ color: 'purple', fontSize: '28px', fontFamily: 'Arial', textAlign: 'center' }}>Add New Expense!{}</h2>
-      <div style={{ display: 'block', marginBottom: '10px' }}>
-        <label htmlFor="amount" style={{ display: 'block', color: 'darkblue', fontSize: '14px', fontWeight: 'bold' }}>Amount (U.S.D)</label>
-        <input
-          type="number"
-          id="amount"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="money"
-          style={{ width: '95%', padding: '5px', border: '1px solid black', backgroundColor: 'lightgray', color: 'black', fontSize: '16px' }}
-          step="0.01"
-          required
-        />
-      </div>
-      <div style={{ display: 'block', marginBottom: '10px' }}>
-        <label htmlFor="description" style={{ display: 'block', color: 'darkgreen', fontSize: '14px', fontWeight: 'bold' }}>Descripiton{}</label>
-        <input
-          type="text"
-          id="description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="spent money"
-          style={{ width: '95%', padding: '5px', border: '1px solid black', backgroundColor: 'lightgray', color: 'black', fontSize: '16px' }}
-          required
-        />
+    <form onSubmit={handleSubmit} className="p-4 bg-gray-800 rounded-lg shadow-lg mb-6">
+      <h2 className="text-2xl font-semibold text-white mb-4">Add New Expense</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label htmlFor="amount" className="block text-sm font-medium text-gray-300 mb-1">Amount</label>
+          <input
+            type="number"
+            id="amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="e.g., 25.50"
+            className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            step="0.01"
+            required
+          />
+        </div>
+        <div>
+          <label htmlFor="description" className="block text-sm font-medium text-gray-300 mb-1">Description</label>
+          <input
+            type="text"
+            id="description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="e.g., Groceries, Dinner"
+            className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            required
+          />
+        </div>
       </div>
       <button
         type="submit"
-        style={{ width: '100%', backgroundColor: 'orange', color: 'black', padding: '15px', border: 'none', cursor: 'pointer', fontSize: '20px', fontWeight: 'bolder', boxShadow: '5px 5px 0px black' }}
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md transition duration-300 ease-in-out transform hover:scale-105 shadow-md"
       >
-        add expense
+        Add Expense
       </button>
     </form>
   );
 };
 
-
-const ExpenseList = () => {
-  const expenses = [
-    { id: '1', description: 'coffee', amount: 4.50, timestamp: new Date() },
-    { id: '2', description: 'lunch', amount: 15.75, timestamp: new Date(Date.now() - 86400000) },
-    { id: '3', description: 'public Transport', amount: 3.00, timestamp: new Date(Date.now() - 172800000) },
-    { id: '4', description: 'random Stuff', amount: 50.00, timestamp: new Date(Date.now() - 259200000) },
-  ];
-  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
-
+const ExpenseList = ({ expenses, onDeleteExpense, totalExpenses }) => {
   return (
-    <div style={{ border: '2px solid blue', padding: '8px', backgroundColor: '#CCEEFF' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid gray', paddingBottom: '5px' }}>
-        <h2 style={{ color: 'darkred', fontSize: '24px', fontFamily: 'Impact', textDecoration: 'underline' }}>Your Expensses{}</h2>
-        <div style={{ color: 'green', fontSize: '22px', fontWeight: 'bold', border: '2px solid green', padding: '5px' }}>
+    <div className="bg-gray-800 rounded-lg shadow-lg p-4">
+      <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-700">
+        <h2 className="text-2xl font-semibold text-white">Your Expenses</h2>
+        <div className="text-lg font-bold text-blue-400">
           Total: ${totalExpenses.toFixed(2)}
         </div>
       </div>
       {expenses.length === 0 ? (
-        <p style={{ color: 'gray', textAlign: 'center', padding: '20px' }}>No expensses yet. Get spending!{}</p>
+        <p className="text-gray-400 text-center py-8">No expenses recorded yet. Add one above!</p>
       ) : (
-        <ul style={{ listStyleType: 'none', padding: '0', margin: '0' }}>
-          {expenses.map((expense) => (
-            <li key={expense.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F0F0F0', padding: '10px', marginBottom: '5px', border: '1px solid #999', boxShadow: '2px 2px 0px #666' }}>
-              <div>
-                <p style={{ color: 'black', fontSize: '18px', fontWeight: 'bold', margin: '0' }}>{expense.description}</p>
-                <p style={{ color: 'darkgray', fontSize: '12px', margin: '0' }}>
-                  {expense.timestamp.toLocaleDateString()}
-                </p>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ color: 'red', fontSize: '20px', fontWeight: 'bold' }}>-${expense.amount.toFixed(2)}</span>
-                <button
-                  onClick={() => console.log(`Delete button clicked for ${expense.id}`)}
-                  style={{ backgroundColor: 'pink', color: 'black', border: '1px solid black', padding: '5px 8px', cursor: 'pointer', fontSize: '14px' }}
-                  aria-label="Delete expense"
-                >
-                  X
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-700">
+            <thead>
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Amount</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Description</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Date</th>
+                <th className="px-6 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="bg-gray-800 divide-y divide-gray-700">{
+              expenses.map((expense) => (
+                <tr key={expense.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-white">${expense.amount.toFixed(2)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-white">{expense.description}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                    {new Date(expense.timestamp?.toDate()).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button
+                      onClick={() => onDeleteExpense(expense.id)}
+                      className="text-red-600 hover:text-red-800 transition duration-300 ease-in-out"
+                      aria-label="Delete expense"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))
+            }</tbody>
+          </table>
+        </div>
       )}
+    </div>
+  );
+};
+
+const ExpenseTrackerContent = () => {
+  const { db, userId, isAuthReady } = useFirebase();
+  const [expenses, setExpenses] = useState([]);
+  const [totalExpenses, setTotalExpenses] = useState(0);
+
+  const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+  useEffect(() => {
+    if (db && userId && isAuthReady) {
+      const expensesCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/expenses`);
+      const q = query(expensesCollectionRef, orderBy('timestamp', 'desc'));
+
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const expensesData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setExpenses(expensesData);
+        setTotalExpenses(expensesData.reduce((sum, expense) => sum + expense.amount, 0));
+      }, (error) => {
+        console.error("Error fetching expenses:", error);
+      });
+
+      return () => unsubscribe();
+    }
+  }, [db, userId, isAuthReady, appId]);
+
+  const addExpense = async (amount, description) => {
+    if (!db || !userId) {
+      console.error("Firestore not initialized or user not authenticated.");
+      console.log("Application not ready. Please try again.");
+      return;
+    }
+
+    try {
+      const expensesCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/expenses`);
+      await addDoc(expensesCollectionRef, {
+        amount: amount,
+        description: description,
+        timestamp: serverTimestamp(),
+      });
+    } catch (e) {
+      console.error("Error adding document: ", e);
+      console.log("Failed to add expense. Please try again.");
+    }
+  };
+
+  const deleteExpense = async (id) => {
+    if (!db || !userId) {
+      console.error("Firestore not initialized or user not authenticated.");
+      console.log("Application not ready. Please try again.");
+      return;
+    }
+
+    try {
+      const expenseDocRef = doc(db, `artifacts/${appId}/users/${userId}/expenses`, id);
+      await deleteDoc(expenseDocRef);
+    } catch (e) {
+      console.error("Error deleting document: ", e);
+      console.log("Failed to delete expense. Please try again.");
+    }
+  };
+
+  if (!isAuthReady) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
+        <div className="text-lg">Loading application...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-gray-100 font-sans p-4 md:p-8">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+      `}</style>
+      <div className="max-w-2xl mx-auto">
+        <h1 className="text-4xl font-bold text-center text-blue-400 mb-8">Personal Expense Tracker</h1>
+        <p className="text-center text-gray-400 mb-6">
+          User ID: <span className="font-mono bg-gray-800 px-2 py-1 rounded text-sm">{userId || 'Not Authenticated'}</span>
+        </p>
+
+        <ExpenseForm onAddExpense={addExpense} />
+        <ExpenseList expenses={expenses} onDeleteExpense={deleteExpense} totalExpenses={totalExpenses} />
+      </div>
     </div>
   );
 };
 
 export default function App() {
   return (
-    <div style={{ backgroundColor: '#AAAAAA', minHeight: '100vh', padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      <style>{`
-        body { font-family: 'Arial', sans-serif; }
-      `}</style>
-      <div style={{ maxWidth: '600px', margin: 'auto', border: '5px dotted black', padding: '15px', backgroundColor: '#EEEEEE' }}>
-        <h1 style={{ color: 'blue', fontSize: '40px', fontWeight: 'bold', textAlign: 'center', textShadow: '2px 2px 0px yellow' }}>
-          expense tracker
-        </h1>
-
-        <ExpenseForm />
-        <ExpenseList />
-      </div>
-    </div>
+    <FirebaseProvider>
+      <ExpenseTrackerContent />
+    </FirebaseProvider>
   );
 }
