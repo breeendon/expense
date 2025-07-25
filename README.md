@@ -1,3 +1,3 @@
-# uni_prep
+# Personal Expense Tracker
 
 A new Flutter project.
