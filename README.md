@@ -2,7 +2,7 @@
 
 Minimalist Expense Tracker that allows users to add and track expenditures.
 
-![Screenshot](expenses.png)
+![Screenshot](expense.png)
 
 # Getting Started
 
@@ -18,3 +18,4 @@ cd expense
 npm run dev
 
 3. Use the app!
+
